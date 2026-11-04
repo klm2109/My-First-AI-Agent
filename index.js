@@ -34,4 +34,96 @@ class SlackAIAgent {
     this.setupSlackEvents();
     this.setupExpress();
 }
+
+  setupSlackEvents() {
+    this.slack.event('team_join', async ({ event, client }) => {
+      try {
+        log.info(`New member joined: ${event.user.real_name}`);
+        const userInfo = await this.get6UserInfo(event.user.id);
+        await this.analyzeAndPostMember(userInfo);
+      } catch (error) {
+        log.error('Error processing team_join:', error.message);
+      }
+    });
+
+    this.slack.event('member_joined_channel', async ({event}) => {
+      try {
+        if(event.channel_type === 'C') {
+          log.info(`Member ${event.user} joined channel ${event.channel}`);
+          const userInfo = await this.get6UserInfo(event.user);
+          await this.analyzeAndPostMember(userInfo);
+        }
+      } catch (error){
+        log.error('Error processing member_joined_channel:', error.message);
+      
+      }
+    });
+    this.slack.error(async (error) => log.error('Slack error:', error.message));
+  }
+
+  setupExpress() {
+    this.app.use(express.json());
+
+    this.app.get('/health', (req, res) => {
+      res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+
+    });
+
+    if(process.env.NODE_ENV === 'development') {
+        this.app.post('/test/analyze', async (req, res) => {
+          try {
+            const {memberInfo} = req.body;
+            if(!memberInfo) return res.status(400).json({ error: 'memberInfo is required' });
+            const analysis = await this.analyzeAndPostMember(memberInfo);
+            res.json({success: true, analysis, timestamp: new Date().toISOString()});
+
+          }catch (error) {
+            log.error('Test analyze error:', error.message);
+            res.status(500).json({ error: 'Analysis failed', message: error.message });
+          }
+
+          
+        });
+      }
+
+      this.app.use((err, req, res, next) => {
+        log.error('Express error:', err.message);
+        res.status(500).json({ error: 'Internal Server Error', message: err.message });
+      })
+      
+
+  }
+
+  async getUserInfo(userId) {
+    const result = await this.WebClient.users.info({ user: userId });
+    const user = result.user;
+
+    return {
+      id: user.id,
+      name: user.real_name || user.name,
+      username: user.name,
+      email: user.profile?.email,
+      title: user.profile?.title,
+      timezone: user.tz, 
+      profile: {
+        firstName: user.profile?.first_name, 
+        lastName: user.profile?.last_name,
+        statusText: user.profile?.status_text
+      }
+    };
+  }
+
+  async analyzeAndPostMember(memberInfo) {
+    let analysisId = null;
+    try {
+      log.info(`Processing member`)
+
+    }catch(error) {}
+    log.error(`Error processing ${memberInfo.name}:`, error.message);
+    if(analysisId) {
+      log.info(`Analysis ${analysisId} saved to database but not sent to Slack due to error:`, error.message);
+    }
+    throw error;
+  }
+
 }
