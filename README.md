@@ -2,7 +2,7 @@
 
 A JavaScript starter project for an AI assistant in Slack. The current direction is member onboarding: detect someone joining a workspace or channel, retrieve their profile, and eventually analyze it and post a result in Slack.
 
-**Current status:** the working files now extend commit `ad216dd` with website/GitHub research, model analysis, PostgreSQL persistence, Slack posting, startup/shutdown, and a Render configuration. The earlier helper spelling and catch-scope issues are fixed. This is an implemented pipeline, but it has not been verified against live services and still has setup and result-handling issues listed below.
+**Current status:** commit `b8e1a88` fixes ES module configuration, the start script, and the PostgreSQL dependency, and updates the lockfile. The application implements research, model analysis, database storage, Slack posting, and startup/shutdown. User-provided logs confirm database connection/schema initialization and Express startup; a local health check returned HTTP 200. Successful end-to-end analysis and Slack posting have not yet been confirmed.
 
 Reading guide: start with [the latest working-file recap](#latest-working-files-research-analysis-storage-and-startup). The setup and package reference explain the foundation. The commit-specific walkthroughs record earlier learning steps and label their historical limitations.
 
@@ -36,15 +36,15 @@ cd My-First-AI-Agent
 
 `package.json` describes the project, its commands, and the packages it needs. `package-lock.json` records the resolved dependency tree so installations can be repeated. `node_modules/` holds the downloaded package code.
 
-The current files need reconciliation: the lockfile's root dependencies differ from `package.json`, including different major versions for Slack packages and dotenv. Decide which versions the project should use, align the manifest and lockfile, and review the resulting changes before treating the installation as reproducible.
+The manifest and lockfile were reconciled in `b8e1a88`. The PostgreSQL driver `pg` is now a declared dependency. Use the committed lockfile for a fresh installation:
 
-For an initial install using the version ranges in `package.json`:
+For a fresh checkout:
 
 ```powershell
-npm.cmd install
+npm.cmd ci
 ```
 
-This can update `package-lock.json`; review that diff. Once both files agree, fresh checkouts can use `npm.cmd ci` for an installation based on the lockfile. Installation downloads dependencies; it does not build a working bot by itself.
+`npm.cmd ci` installs the locked dependency tree and replaces the local `node_modules` installation. Use `npm.cmd install` when intentionally changing dependencies, and review the resulting manifest/lockfile changes. Installation downloads dependencies; it does not configure external services.
 
 ## What each package does
 
@@ -60,7 +60,7 @@ These are the direct dependencies declared in `package.json`. The last column di
 | `dotenv` | Reads values from a local `.env` file into `process.env`. | `dotenv.config()` is already called to load configuration. |
 | `express` | Creates an HTTP server with routes and middleware. | Defines JSON parsing, health/test routes, error middleware, and a listener started by `start()`. |
 
-The new `db.js` also imports **`pg`**, the PostgreSQL driver. It provides the reusable connection pool and SQL queries, but is not yet declared in `package.json`; a clean install must declare it before the app can run.
+`db.js` also imports **`pg`**, the PostgreSQL driver, now declared in `package.json`. It provides the reusable connection pool and SQL queries.
 
 Official references: [LangChain core](https://reference.langchain.com/javascript/modules/_langchain_core.html), [ChatOpenAI](https://docs.langchain.com/oss/javascript/integrations/chat/openai), [Slack Bolt](https://docs.slack.dev/tools/bolt-js/), [Slack Web API](https://docs.slack.dev/tools/node-slack-sdk/web-api/), [Axios](https://axios-http.com/docs/intro), [dotenv](https://github.com/motdotla/dotenv), and [Express](https://expressjs.com/).
 
@@ -80,11 +80,11 @@ NODE_ENV=development
 
 These placeholders do not create credentials or configure a Slack app. Slack app permissions, event subscriptions, and workspace installation still need to be set up when implementing the bot.
 
-The repository currently tracks `.env` and files under `node_modules/`. Adding ignore rules does not untrack existing files. Before publishing further changes, remove these paths from Git tracking while retaining local copies, and ignore `.env` and `node_modules/`. If real credentials have already been committed, rotate them with their provider; deleting a file does not remove it from Git history. A committed `.env.example` should contain placeholders only.
+`.env` is now ignored and no longer tracked in the current revision. Older commits still contain an earlier `.env`; rotate any real credentials recorded there. Files under `node_modules/` remain tracked from the initial setup even though that directory is ignored. Adding ignore rules does not untrack existing files; removing those tracked dependency files is a separate cleanup task. A committed `.env.example` should contain placeholders only.
 
-## Setup issues to fix before running the agent
+## Setup fixes and remaining work
 
-1. **Module format:** `package.json` sets `"type": "commonjs"`, while `index.js` uses ES module `import` syntax. Change the type to `"module"` to match the existing code, or rewrite the imports as CommonJS.
+1. **Module format, fixed:** `package.json` now sets `"type": "module"`, matching the `import`/`export` syntax in both source files.
 2. **Prompt import, resolved in the latest working file:** the code now uses `ChatPromptTemplate` from `@langchain/core/prompts`. The earlier correction was to use this installed package's entry point rather than `langchain/prompts`:
 
    ```javascript
@@ -95,19 +95,19 @@ The repository currently tracks `.env` and files under `node_modules/`. Adding i
    } from '@langchain/core/prompts';
    ```
 
-3. **Start script:** rename the current script key `` starts` `` to `start`, keeping its value `node index.js`.
-4. **Dependency versions:** align `package.json` and `package-lock.json` as described above.
-5. **Database dependency:** declare `pg` and regenerate a consistent lockfile. Configure a reachable PostgreSQL database through `DATABASE_URL`.
+3. **Start script, fixed:** `npm.cmd start` now runs `node index.js`.
+4. **Dependency versions, fixed:** the lockfile now reflects the declared dependencies.
+5. **Database dependency, fixed:** `pg` is installed and declared. Configure a reachable PostgreSQL database through `DATABASE_URL`.
 6. **Results:** `analyzeAndPostMember()` now performs research, analysis, saving, and posting, but does not return its analysis. The development response therefore omits its `analysis` field even on success. See the latest walkthrough for other result-handling limits.
-7. **Startup, implemented but unverified:** the code now instantiates the class, starts Express and Slack, and handles termination signals. Fix the manifest/dependency issues before attempting live startup.
+7. **Startup, partially verified:** database initialization and HTTP startup succeeded. Slack previously reported `missing_scope`; use an app-level token with `connections:write` as described in troubleshooting below. A successful Slack connection and complete analysis still need confirmation.
 
-After correcting the module format and imports, the existing development command is:
+The development command is:
 
 ```powershell
 npm.cmd run dev
 ```
 
-It runs `node --watch index.js`, restarting when the source changes. After correcting the start script, `npm.cmd start` runs the entry point once. The latest code attempts real database, HTTP, and Slack startup, so configure those services before running it. The current `test` script is an npm placeholder that intentionally exits with an error; there are no implemented tests yet.
+It runs `node --watch index.js`, restarting when the source changes. `npm.cmd start` runs the entry point once without watching. Both attempt real database, HTTP, and Slack startup. The current `test` script is an npm placeholder that intentionally exits with an error; there are no implemented tests yet.
 
 Step 1 is complete when Node.js and npm work, dependencies install with a consistent manifest and lockfile, and you understand the configuration and remaining scaffold issues. For the current onboarding direction, the next milestone is to make a join event fetch a profile successfully, then implement analysis and posting.
 
@@ -516,7 +516,7 @@ The `$1` through `$9` SQL placeholders correspond in order to the values array p
 
 The bottom-level `new SlackAIAgent()` now constructs the object, and `agent.start()` begins startup. Exporting `agent` does not delay those calls; importing this entry module will also trigger them.
 
-`render.yaml` describes a PostgreSQL database and Node web service, links `DATABASE_URL`, lists externally supplied secrets, selects production mode, and points health checks at `/health`. It requests `npm start`, so the current misspelled package script must be fixed. This configuration file is a deployment proposal, not evidence of a deployed or healthy service. Production mode excludes the development test route.
+`render.yaml` describes a PostgreSQL database and Node web service, links `DATABASE_URL`, lists externally supplied secrets, selects production mode, and points health checks at `/health`. Its `npm start` command now matches the corrected package script. This configuration file is a deployment proposal, not evidence of a deployed or healthy service. Production mode excludes the development test route.
 
 ### Additional environment variables
 
@@ -532,6 +532,65 @@ PORT=3000
 
 ### Current checklist and verification
 
-The helper typo, prompt import, catch scope, and missing lifecycle methods have been corrected in the newer source. Remaining priorities are the CommonJS/ES module mismatch, missing `pg` dependency, misspelled start script, inconsistent lockfile, missing analysis return value, score/response validation, and handling unverified research and repeated events.
+The helper typo, prompt import, catch scope, lifecycle methods, module setting, `pg` dependency, start script, and lockfile have been corrected. Remaining priorities include the missing analysis return value, score/response validation, unverified research, repeated events, and confirming the complete live flow.
 
-Both current source files pass syntax parsing when explicitly treated as ES modules. The configured package still declares CommonJS, so those checks do not demonstrate successful startup. The README passes its whitespace check. No live Slack posts, model requests, database writes, or deployments were performed for this review.
+Both source files pass `node --check` with the corrected package setting. Installed direct dependencies were checked with `npm.cmd ls --depth=0`. Database initialization and HTTP startup are supported by the user's logs, and a read-only local health request returned HTTP 200. No analysis request, Slack post, or deployment was performed by the assistant during these checks.
+
+## Troubleshooting notes from setup
+
+### Node reports: Cannot use import statement outside a module
+
+JavaScript has two module systems. This project uses ES module `import` and `export`, so `package.json` must contain `"type": "module"`. The earlier `"commonjs"` setting caused Node to reject the first import before any application code ran. This is fixed in `b8e1a88`. Restart an existing watcher after updating dependencies or package settings.
+
+### GitHub rejects a push with GH013: Push cannot contain secrets
+
+GitHub detected an OpenAI API key in `.env` in rejected commit `e9c1826`. That local commit was amended to `418ea41`, removing `.env` from Git tracking while retaining the local file. The later setup-fix commit `b8e1a88` was pushed successfully.
+
+Adding `.env` to `.gitignore` alone does not remove it from commits. If this happens again, remove the secret from every affected outgoing commit and revoke/replace the exposed credential. Do not bypass protection for a real key. Earlier already-committed credentials also need rotation; untracking a file does not erase history. See [GitHub's blocked-push instructions](https://docs.github.com/en/code-security/how-tos/secure-your-secrets/work-with-leak-prevention/push-protection-on-the-command-line).
+
+### Slack reports missing_scope while retrieving a WSS URL
+
+WSS is the secure WebSocket connection used by Socket Mode. The database and HTTP server can start successfully while Slack connection setup still fails.
+
+1. Stop the app with Ctrl+C.
+2. Open your app in [Slack app settings](https://api.slack.com/apps) and enable Socket Mode.
+3. Under Basic Information → App-Level Tokens, generate a token with `connections:write`.
+4. Put that app-level token in local `SLACK_APP_TOKEN`; keep the separate bot token in `SLACK_BOT_TOKEN`.
+5. Restart the app and look for `Slack bot connected`.
+
+App-level tokens normally start with `xapp-`; bot tokens normally start with `xoxb-`. These serve different purposes. The connection permission belongs to the app-level token. See [Slack's Socket Mode setup](https://docs.slack.dev/apis/events-api/using-socket-mode/). Event subscriptions, profile-reading permissions, posting permissions, and destination-channel membership still need their own configuration.
+
+### PowerShell rejects curl -X, -H, or -d
+
+In Windows PowerShell, `curl` can be an alias for `Invoke-WebRequest`, which does not accept curl's flags. Also, `\` is not PowerShell's line-continuation character. Use the native `Invoke-RestMethod` example below. `curl.exe` explicitly selects the curl executable when using actual curl syntax.
+
+### Testing from PowerShell
+
+Run the app in one terminal with `NODE_ENV=development`. In a second terminal, first check HTTP availability:
+
+```powershell
+Invoke-RestMethod -Uri 'http://127.0.0.1:3000/health' -Method Get -TimeoutSec 10
+```
+
+A healthy response only confirms HTTP availability. The following request exercises the real pipeline: it can make a billable model request, create a database row, and post in the configured Slack channel. Retrying can create duplicates.
+
+```powershell
+$body = @{
+    memberInfo = @{
+        id = 'U_TEST'
+        name = 'Alex Example'
+        email = 'alex@example.com'
+        title = 'Software Engineer'
+    }
+} | ConvertTo-Json -Depth 3
+
+Invoke-RestMethod -Uri 'http://127.0.0.1:3000/test/analyze-member' -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 120
+```
+
+`ConvertTo-Json` converts the PowerShell objects into JSON text. `-ContentType` tells Express how to parse the body, and `-TimeoutSec` limits how long the client waits. The sample email is illustrative; company research may fail and be skipped. Production mode does not register this test route.
+
+### PowerShell reports: The underlying connection was closed
+
+This means the client did not receive a complete response; the message alone does not identify the cause. A server restart or local connection/proxy issue is possible. A read-only check of `http://127.0.0.1:3000/health` returned HTTP 200 during troubleshooting, but the failed analysis request's cause was not confirmed.
+
+Keep the server terminal visible, avoid editing watched files during requests, and use `127.0.0.1` as shown above. If the health check succeeds but analysis fails, inspect the server logs at the same time for the failing stage: research, model, database save, Slack post, or sent-status update. Capture those errors without sharing credentials. Do not repeatedly resend analysis requests before checking whether a row or Slack post already succeeded.
